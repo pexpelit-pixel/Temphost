@@ -1,0 +1,11 @@
+name = "temp-html-telegram-bot"
+main = "index.js"
+compatibility_date = "2026-03-01"
+
+workers_dev = true
+
+# Optional: kalau mau lebih ngebut & modern API
+compatibility_flags = ["nodejs_compat"]
+
+# Optional: limit log biar ga berisik
+logpush = false
