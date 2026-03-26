@@ -1,95 +1,95 @@
+addEventListener("fetch", event => {
+  event.respondWith(handleRequest(event.request));
+});
+
 const BOT_TOKEN = "7077466795:AAE1Rdq0VR6KCdS34xCxr8ow9liF_FOWftw";
 
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
+async function handle(request) {
+  const url = new URL(request.url);
 
-    // ===== VIEW =====
-    if (url.pathname.startsWith("/view/")) {
-      const id = url.pathname.split("/view/")[1];
-      const key = new Request(`${url.origin}/view/${id}`, { method: "GET" });
+  // ===== VIEW =====
+  if (url.pathname.startsWith("/view/")) {
+    const id = url.pathname.split("/view/")[1];
 
-      const cached = await caches.default.match(key);
-      if (!cached) {
-        return new Response("Expired / not found", { status: 404 });
-      }
+    const html = await HTML_STORE.get(id);
 
-      return cached;
+    if (!html) {
+      return new Response("Expired / not found", { status: 404 });
     }
 
-    // ===== WEBHOOK TELEGRAM =====
-    if (url.pathname === "/webhook" && request.method === "POST") {
-      const update = await request.json();
-      const msg = update?.message;
+    return new Response(html, {
+      headers: { "content-type": "text/html; charset=utf-8" }
+    });
+  }
 
-      if (!msg) return new Response("ok");
+  // ===== WEBHOOK =====
+  if (url.pathname === "/webhook" && request.method === "POST") {
+    const update = await request.json();
+    const msg = update.message;
 
-      const chatId = msg.chat.id;
-      const origin = url.origin;
-      const id = crypto.randomUUID().replace(/-/g, "");
+    if (!msg) return new Response("ok");
 
-      let html = null;
+    const chatId = msg.chat.id;
+    const origin = url.origin;
 
-      // text jadi html
-      if (msg.text) {
-        html = msg.text;
-      }
+    let html = null;
 
-      // file html
-      if (msg.document) {
-        const fileId = msg.document.file_id;
+    // text
+    if (msg.text) {
+      html = msg.text;
+    }
 
-        const infoRes = await fetch(
-          `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
-        );
-        const info = await infoRes.json();
+    // file html
+    if (msg.document) {
+      const fileId = msg.document.file_id;
 
-        if (!info.ok) {
-          await send(chatId, "Gagal ambil file");
-          return new Response("ok");
-        }
+      const infoRes = await fetch(
+        "https://api.telegram.org/bot" + BOT_TOKEN + "/getFile?file_id=" + fileId
+      );
+      const info = await infoRes.json();
 
-        const filePath = info.result.file_path;
-        const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-
-        const fileRes = await fetch(fileUrl);
-        html = await fileRes.text();
-      }
-
-      if (!html) {
-        await send(chatId, "Kirim HTML / file .html");
+      if (!info.ok) {
+        await send(chatId, "Gagal ambil file");
         return new Response("ok");
       }
 
-      const key = new Request(`${origin}/view/${id}`, { method: "GET" });
+      const filePath = info.result.file_path;
+      const fileUrl =
+        "https://api.telegram.org/file/bot" + BOT_TOKEN + "/" + filePath;
 
-      const res = new Response(html, {
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "public, max-age=3600"
-        },
-      });
+      const fileRes = await fetch(fileUrl);
+      html = await fileRes.text();
+    }
 
-      await caches.default.put(key, res);
-
-      const link = `${origin}/view/${id}`;
-      await send(chatId, `✅ Temp host:\n${link}`);
-
+    if (!html) {
+      await send(chatId, "Kirim HTML / file .html");
       return new Response("ok");
     }
 
-    return new Response("Bot aktif 🚀");
-  },
-};
+    const id = crypto.randomUUID().replace(/-/g, "");
 
-// helper kirim telegram
+    // 🔥 simpan ke KV (1 jam)
+    await HTML_STORE.put(id, html, {
+      expirationTtl: 3600
+    });
+
+    const link = origin + "/view/" + id;
+
+    await send(chatId, "✅ KV Host:\n" + link + "\n⏳ 1 jam");
+
+    return new Response("ok");
+  }
+
+  return new Response("OK 🚀");
+}
+
 async function send(chatId, text) {
-  return fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+  return fetch("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       chat_id: chatId,
-      text,
-    }),
+      text: text
+    })
   });
-          }
+}
